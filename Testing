@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Платформа проверки кода</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #2c3e50; }
+        .controls { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; }
+        select, button { padding: 10px 15px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; }
+        button { background-color: #3498db; color: white; border: none; font-weight: bold; transition: background 0.3s; }
+        button:hover { background-color: #2980b9; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        textarea { width: 100%; height: 250px; padding: 15px; font-family: 'Courier New', Courier, monospace; font-size: 15px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; resize: vertical; background-color: #fafafa; }
+        #status { text-align: center; font-weight: bold; margin: 15px 0; height: 20px; color: #e67e22; }
+        #results { margin-top: 20px; }
+        .test-case { padding: 10px 15px; margin-bottom: 10px; border-radius: 5px; border-left: 5px solid #ccc; background: #f9f9f9; }
+        .test-case.success { border-left-color: #2ecc71; background: #eafaf1; }
+        .test-case.fail { border-left-color: #e74c3c; background: #fdedec; }
+        .test-title { font-weight: bold; margin-bottom: 5px; }
+        .details { font-family: monospace; font-size: 14px; white-space: pre-wrap; margin-top: 5px; color: #555; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Проверка задач по Python</h1>
+    
+    <div class="controls">
+        <label for="taskSelect"><b>Задача:</b></label>
+        <select id="taskSelect">
+            <option value="1">1. Ёлочка</option>
+            <option value="2">2. Зайки</option>
+            <option value="3">3. Числа по возрастанию</option>
+            <option value="4">4. Числа в любом порядке</option>
+            <option value="5">5. Скидка 10%</option>
+            <option value="6">6. НОД</option>
+            <option value="7">7. Замена символов</option>
+            <option value="8">8. НОК</option>
+            <option value="9">9. Факториал</option>
+            <option value="10">10. Навигация</option>
+            <option value="11">11. Максимальная цифра</option>
+            <option value="12">12. Палиндром</option>
+            <option value="13">13. Очистка от четных</option>
+            <option value="14">14. Простые множители</option>
+            <option value="15">15. Угадайка</option>
+        </select>
+        <button id="runBtn" onclick="runTests()" disabled>Загрузка Python...</button>
+    </div>
+
+    <textarea id="codeInput" placeholder="Вставьте сюда ваш код на Python..."></textarea>
+    
+    <div id="status"></div>
+    <div id="results"></div>
+</div>
+
+<script>
+    let pyodide;
+    let isReady = false;
+
+    # База тестов
+    const TESTS = {
+        1: [
+            { in: "Раз!\nДва!\nТри!\n", out: "Режим ожидания...\nРежим ожидания...\nЁлочка, гори!" },
+            { in: "Три!\n", out: "Ёлочка, гори!" },
+            { in: "Десять!\nДевять!\nРаз!\nТри!\n", out: "Режим ожидания...\nРежим ожидания...\nРежим ожидания...\nЁлочка, гори!" },
+            { in: "Раз!\nТри!\n", out: "Режим ожидания...\nЁлочка, гори!" },
+            { in: "Два!\nТри!\n", out: "Режим ожидания...\nЁлочка, гори!" }
+        ],
+        2: [
+            { in: "березка елочка зайка волк березка\nсосна сосна сосна елочка грибочки медведь\nсосна сосна сосна белочка сосна белочка\nПриехали!\n", out: "1" },
+            { in: "зайка березка\nберезка зайка\nберезка елочка березка\nПриехали!\n", out: "2" },
+            { in: "сосна\nбереза\nПриехали!\n", out: "0" },
+            { in: "зайка\nзайка\nзайка\nПриехали!\n", out: "3" },
+            { in: "зайка и волк\nволк и лиса\nПриехали!\n", out: "1" }
+        ],
+        3: [
+            { in: "1\n10\n", out: "1 2 3 4 5 6 7 8 9 10" },
+            { in: "3\n5\n", out: "3 4 5" },
+            { in: "0\n0\n", out: "0" },
+            { in: "-2\n2\n", out: "-2 -1 0 1 2" },
+            { in: "10\n10\n", out: "10" }
+        ],
+        4: [
+            { in: "1\n10\n", out: "1 2 3 4 5 6 7 8 9 10" },
+            { in: "3\n-3\n", out: "3 2 1 0 -1 -2 -3" },
+            { in: "10\n1\n", out: "10 9 8 7 6 5 4 3 2 1" },
+            { in: "-5\n-1\n", out: "-5 -4 -3 -2 -1" },
+            { in: "0\n0\n", out: "0" }
+        ],
+        5: [
+            { in: "100\n500\n333\n0\n", out: "883.0" },
+            { in: "512\n499\n342.50\n0\n", out: "1302.3" },
+            { in: "0\n", out: "0.0" },
+            { in: "500\n0\n", out: "450.0" },
+            { in: "499.99\n0\n", out: "499.99" }
+        ],
+        6: [
+            { in: "12\n42\n", out: "6" },
+            { in: "512\n625\n", out: "1" },
+            { in: "18\n24\n", out: "6" },
+            { in: "7\n7\n", out: "7" },
+            { in: "100\n75\n", out: "25" }
+        ],
+        7: [
+            { in: "Hello world. Python is cool.\n", out: "Hello_world!_Python_is_cool!" },
+            { in: "a b.c\n", out: "a_b!c" },
+            { in: ".\n", out: "!" },
+            { in: "   \n", out: "___" },
+            { in: "abc\n", out: "abc" }
+        ],
+        8: [
+            { in: "12\n42\n", out: "84" },
+            { in: "512\n625\n", out: "320000" },
+            { in: "3\n5\n", out: "15" },
+            { in: "7\n7\n", out: "7" },
+            { in: "10\n15\n", out: "30" }
+        ],
+        9: [
+            { in: "3\n", out: "6" },
+            { in: "5\n", out: "120" },
+            { in: "0\n", out: "1" },
+            { in: "1\n", out: "1" },
+            { in: "7\n", out: "5040" }
+        ],
+        10: [
+            { in: "СЕВЕР\n2\nВОСТОК\n2\nСТОП\n", out: "2\n2" },
+            { in: "СЕВЕР\n2\nЮГ\n3\nЗАПАД\n4\nСТОП\n", out: "-1\n-4" },
+            { in: "ВОСТОК\n5\nЗАПАД\n2\nСТОП\n", out: "0\n3" },
+            { in: "ЮГ\n1\nСЕВЕР\n1\nСТОП\n", out: "0\n0" },
+            { in: "ЗАПАД\n10\nЮГ\n5\nВОСТОК\n3\nСЕВЕР\n7\nСТОП\n", out: "2\n-7" }
+        ],
+        11: [
+            { in: "12345\n", out: "5" },
+            { in: "100500\n", out: "5" },
+            { in: "9\n", out: "9" },
+            { in: "1111\n", out: "1" },
+            { in: "90807\n", out: "9" }
+        ],
+        12: [
+            { in: "123454321\n", out: "YES" },
+            { in: "1234\n", out: "NO" },
+            { in: "1\n", out: "YES" },
+            { in: "121\n", out: "YES" },
+            { in: "1001\n", out: "YES" }
+        ],
+        13: [
+            { in: "1234\n", out: "13" },
+            { in: "123454321\n", out: "13531" },
+            { in: "246813579\n", out: "13579" },
+            { in: "111\n", out: "111" },
+            { in: "9876543210\n", out: "97531" }
+        ],
+        14: [
+            { in: "120\n", out: "2 * 2 * 2 * 3 * 5" },
+            { in: "98\n", out: "2 * 7 * 7" },
+            { in: "2\n", out: "2" },
+            { in: "13\n", out: "13" },
+            { in: "360\n", out: "2 * 2 * 2 * 3 * 3 * 5" }
+        ],
+        15: [
+            { secret: 1 }, { secret: 123 }, { secret: 500 }, { secret: 777 }, { secret: 1000 }
+        ]
+    };
+
+    async function initPyodide() {
+        try {
+            pyodide = await loadPyodide();
+            isReady = true;
+            const btn = document.getElementById('runBtn');
+            btn.disabled = false;
+            btn.innerText = "Проверить код";
+            document.getElementById('status').innerText = "";
+        } catch (e) {
+            document.getElementById('status').innerText = "Ошибка загрузки Python: " + e;
+        }
+    }
+    initPyodide();
+
+    # Запуск тестов
+    async function runTests() {
+        const taskId = document.getElementById('taskSelect').value;
+        const userCode = document.getElementById('codeInput').value;
+        const resultsDiv = document.getElementById('results');
+        const statusDiv = document.getElementById('status');
+        
+        resultsDiv.innerHTML = "";
+        statusDiv.innerText = "Выполняется...";
+        statusDiv.style.color = "#e67e22";
+
+        const tests = TESTS[taskId];
+        let passed = 0;
+
+        for (let i = 0; i < tests.length; i++) {
+            let testResult;
+            
+            if (taskId === "15") {
+                testResult = await runInteractiveTest(userCode, tests[i].secret);
+            } else {
+                testResult = await runStandardTest(userCode, tests[i].in, tests[i].out);
+            }
+
+            const div = document.createElement('div');
+            div.className = `test-case ${testResult.success ? 'success' : 'fail'}`;
+            
+            if (testResult.success) {
+                passed++;
+                div.innerHTML = `<div class="test-title"> Тест ${i + 1}: Пройден</div>`;
+            } else {
+                div.innerHTML = `
+                    <div class="test-title"> Тест ${i + 1}: Не пройден</div>
+                    <div class="details"><b>Ожидалось:</b>\n${testResult.expected || 'Успешное угадывание'}\n<b>Получено:</b>\n${testResult.actual}</div>
+                `;
+            }
+            resultsDiv.appendChild(div);
+        }
+
+        statusDiv.innerText = `Итог: пройдено ${passed} из ${tests.length}`;
+        statusDiv.style.color = passed === tests.length ? "#2ecc71" : "#e74c3c";
+    }
+
+    # Тест для задач 1-14
+    async function runStandardTest(code, inputStr, expectedStr) {
+       
+        const wrapper = `
+import sys
+import io
+import builtins
+
+_inputs = ${JSON.stringify(inputStr.split('\n'))}
+_input_idx = 0
+
+def mock_input(prompt=""):
+    global _input_idx
+    if _input_idx >= len(_inputs):
+        raise EOFError()
+    val = _inputs[_input_idx]
+    _input_idx += 1
+    return val
+
+builtins.input = mock_input
+
+_old_stdout = sys.stdout
+sys.stdout = io.StringIO()
+
+_locals = {}
+try:
+    exec(${JSON.stringify(code)}, _locals, _locals)
+except Exception as e:
+    sys.stdout.write(f"ERROR: {e}")
+
+_result = sys.stdout.getvalue()
+sys.stdout = _old_stdout
+_result
+        `;
+        
+        try {
+            let actual = await pyodide.runPythonAsync(wrapper);
+            actual = actual.trim(); 
+            let expected = expectedStr.trim();
+            
+            return {
+                success: actual === expected,
+                expected: expected,
+                actual: actual
+            };
+        } catch (e) {
+            return { success: false, actual: "Ошибка выполнения: " + e };
+        }
+    }
+
+    # Тест для задача 15
+    async function runInteractiveTest(code, secret) {
+        const wrapper = `
+import sys
+import io
+import builtins
+import re
+
+_secret = ${secret}
+_last_guess = None
+_attempts = 0
+_success = False
+
+_old_stdout = sys.stdout
+sys.stdout = io.StringIO()
+
+def mock_print(*args, **kwargs):
+    global _last_guess
+    text = " ".join(map(str, args))
+    numbers = re.findall(r'-?\\d+', text)
+    if numbers:
+        _last_guess = numbers[-1]
+    _old_stdout.write(text + "\\n")
+
+def mock_input(prompt=""):
+    global _attempts, _success, _last_guess
+    _attempts += 1
+    if _attempts > 10:
+        raise Exception("Превышено количество попыток (больше 10)")
+    if _last_guess is None:
+        raise Exception("Программа запросила ввод, но не вывела предположение")
+    
+    try:
+        g = int(_last_guess)
+    except ValueError:
+        raise Exception(f"Выведенное значение '{_last_guess}' не является числом")
+        
+    if g == _secret:
+        _success = True
+        return "Угадал!"
+    elif _secret > g:
+        return "Больше"
+    else:
+        return "Меньше"
+
+builtins.print = mock_print
+builtins.input = mock_input
+
+_locals = {}
+try:
+    exec(${JSON.stringify(code)}, _locals, _locals)
+except Exception as e:
+    _old_stdout.write(f"ERROR: {e}")
+
+_result = sys.stdout.getvalue()
+sys.stdout = _old_stdout
+_result
+        `;
+
+        try {
+            let actual = await pyodide.runPythonAsync(wrapper);
+            let success = await pyodide.runPythonAsync(`_success`);
+            
+            return {
+                success: success,
+                expected: `Угадать число ${secret} за <= 10 попыток`,
+                actual: actual.trim() || "Программа не вывела предположение"
+            };
+        } catch (e) {
+            return { success: false, actual: "Ошибка выполнения: " + e };
+        }
+    }
+</script>
+
+</body>
+</html>
