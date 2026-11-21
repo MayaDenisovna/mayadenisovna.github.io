@@ -60,8 +60,7 @@
 <script>
     let pyodide;
     let isReady = false;
-
-    # База тестов
+    
     const TESTS = {
         1: [
             { in: "Раз!\nДва!\nТри!\n", out: "Режим ожидания...\nРежим ожидания...\nЁлочка, гори!" },
@@ -180,7 +179,6 @@
     }
     initPyodide();
 
-    # Запуск тестов
     async function runTests() {
         const taskId = document.getElementById('taskSelect').value;
         const userCode = document.getElementById('codeInput').value;
@@ -221,8 +219,7 @@
         statusDiv.innerText = `Итог: пройдено ${passed} из ${tests.length}`;
         statusDiv.style.color = passed === tests.length ? "#2ecc71" : "#e74c3c";
     }
-
-    # Тест для задач 1-14
+    
     async function runStandardTest(code, inputStr, expectedStr) {
        
         const wrapper = `
@@ -272,7 +269,6 @@ _result
         }
     }
 
-    # Тест для задача 15
     async function runInteractiveTest(code, secret) {
         const wrapper = `
 import sys
